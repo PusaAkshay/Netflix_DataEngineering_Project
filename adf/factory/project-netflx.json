@@ -1,9 +1,0 @@
-{
-	"name": "project-netflx",
-	"location": "centralindia",
-	"identity": {
-		"type": "SystemAssigned",
-		"principalId": "7f3b354d-b5c5-4ca1-a17c-4ca75abedf27",
-		"tenantId": "2e185e42-326c-41c0-9226-6487eff382b8"
-	}
-}
