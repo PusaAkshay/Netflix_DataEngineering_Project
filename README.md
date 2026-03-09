@@ -138,13 +138,3 @@ Netflix_DataEngineering_Project/
 
 ---
 
-## What I'd add next
-
-- Connect Power BI for dashboards
-- Set up CI/CD with Azure DevOps
-- Add more specific data quality rules per table
-- Look into SCD Type 2 for slowly changing data
-- Add pipeline monitoring with Azure Monitor
-
----
-
