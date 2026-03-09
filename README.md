@@ -118,7 +118,7 @@ Netflix_DataEngineering_Project/
 │   └── DLT_Gold_Layer01.py
 │
 ├── synapse/
-│   └── external_tables.sql
+│   └── sql script 1.sql
 │
 └── README.md
 ```
