@@ -1,0 +1,148 @@
+{
+	"$schema": "http://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+	"contentVersion": "1.0.0.0",
+	"parameters": {
+		"workspaceName": {
+			"type": "string",
+			"metadata": "Workspace name",
+			"defaultValue": "mani28"
+		},
+		"ls_adls_accountKey": {
+			"type": "secureString",
+			"metadata": "Secure string for 'accountKey' of 'ls_adls'"
+		},
+		"mani28-WorkspaceDefaultSqlServer_connectionString": {
+			"type": "secureString",
+			"metadata": "Secure string for 'connectionString' of 'mani28-WorkspaceDefaultSqlServer'",
+			"defaultValue": "Integrated Security=False;Encrypt=True;Connection Timeout=30;Data Source=tcp:mani28.sql.azuresynapse.net,1433;Initial Catalog=@{linkedService().DBName}"
+		},
+		"ls_adls_properties_typeProperties_url": {
+			"type": "string",
+			"defaultValue": "https://netflixproject28.dfs.core.windows.net/"
+		},
+		"mani28-WorkspaceDefaultStorage_properties_typeProperties_url": {
+			"type": "string",
+			"defaultValue": "https://manisynapse28.dfs.core.windows.net"
+		}
+	},
+	"variables": {
+		"workspaceId": "[concat('Microsoft.Synapse/workspaces/', parameters('workspaceName'))]"
+	},
+	"resources": [
+		{
+			"name": "[concat(parameters('workspaceName'), '/ls_adls')]",
+			"type": "Microsoft.Synapse/workspaces/linkedServices",
+			"apiVersion": "2019-06-01-preview",
+			"properties": {
+				"annotations": [],
+				"type": "AzureBlobFS",
+				"typeProperties": {
+					"url": "[parameters('ls_adls_properties_typeProperties_url')]",
+					"accountKey": {
+						"type": "SecureString",
+						"value": "[parameters('ls_adls_accountKey')]"
+					}
+				},
+				"connectVia": {
+					"referenceName": "AutoResolveIntegrationRuntime",
+					"type": "IntegrationRuntimeReference"
+				}
+			},
+			"dependsOn": [
+				"[concat(variables('workspaceId'), '/integrationRuntimes/AutoResolveIntegrationRuntime')]"
+			]
+		},
+		{
+			"name": "[concat(parameters('workspaceName'), '/mani28-WorkspaceDefaultSqlServer')]",
+			"type": "Microsoft.Synapse/workspaces/linkedServices",
+			"apiVersion": "2019-06-01-preview",
+			"properties": {
+				"parameters": {
+					"DBName": {
+						"type": "String"
+					}
+				},
+				"annotations": [],
+				"type": "AzureSqlDW",
+				"typeProperties": {
+					"connectionString": "[parameters('mani28-WorkspaceDefaultSqlServer_connectionString')]"
+				},
+				"connectVia": {
+					"referenceName": "AutoResolveIntegrationRuntime",
+					"type": "IntegrationRuntimeReference"
+				}
+			},
+			"dependsOn": [
+				"[concat(variables('workspaceId'), '/integrationRuntimes/AutoResolveIntegrationRuntime')]"
+			]
+		},
+		{
+			"name": "[concat(parameters('workspaceName'), '/mani28-WorkspaceDefaultStorage')]",
+			"type": "Microsoft.Synapse/workspaces/linkedServices",
+			"apiVersion": "2019-06-01-preview",
+			"properties": {
+				"annotations": [],
+				"type": "AzureBlobFS",
+				"typeProperties": {
+					"url": "[parameters('mani28-WorkspaceDefaultStorage_properties_typeProperties_url')]"
+				},
+				"connectVia": {
+					"referenceName": "AutoResolveIntegrationRuntime",
+					"type": "IntegrationRuntimeReference"
+				}
+			},
+			"dependsOn": [
+				"[concat(variables('workspaceId'), '/integrationRuntimes/AutoResolveIntegrationRuntime')]"
+			]
+		},
+		{
+			"name": "[concat(parameters('workspaceName'), '/AutoResolveIntegrationRuntime')]",
+			"type": "Microsoft.Synapse/workspaces/integrationRuntimes",
+			"apiVersion": "2019-06-01-preview",
+			"properties": {
+				"type": "Managed",
+				"typeProperties": {
+					"computeProperties": {
+						"location": "AutoResolve",
+						"dataFlowProperties": {
+							"computeType": "General",
+							"coreCount": 8,
+							"timeToLive": 0
+						}
+					}
+				}
+			},
+			"dependsOn": []
+		},
+		{
+			"name": "[concat(parameters('workspaceName'), '/WorkspaceSystemIdentity')]",
+			"type": "Microsoft.Synapse/workspaces/credentials",
+			"apiVersion": "2019-06-01-preview",
+			"properties": {
+				"type": "ManagedIdentity",
+				"typeProperties": {}
+			},
+			"dependsOn": []
+		},
+		{
+			"name": "[concat(parameters('workspaceName'), '/SQL script 1')]",
+			"type": "Microsoft.Synapse/workspaces/sqlscripts",
+			"apiVersion": "2019-06-01-preview",
+			"properties": {
+				"content": {
+					"query": "\n\nCREATE MASTER KEY ENCRYPTION BY PASSWORD = 'akshay@5114747#$'\nGO\n\nCREATE DATABASE SCOPED CREDENTIAL akshaycreds\nWITH IDENTITY = 'Managed Identity'\nGO\nCREATE EXTERNAL DATA SOURCE silver_source\nWITH (\n    LOCATION   = 'abfss://silver@netflixproject28.dfs.core.windows.net/',\n    CREDENTIAL = akshaycreds\n)\nGO\n\n-- WRITE source (gold container)\nCREATE EXTERNAL DATA SOURCE gold_source\nWITH (\n    LOCATION   = 'abfss://gold@netflixproject28.dfs.core.windows.net/',\n    CREDENTIAL = akshaycreds\n)\nGO\n\nCREATE EXTERNAL FILE FORMAT ParquetFormat\nWITH (\n    FORMAT_TYPE = PARQUET\n)\nGO\nCREATE SCHEMA netflix_schema\n\n-- 1. cast\nCREATE EXTERNAL TABLE netflix_schema.gold_netflixcast\nWITH (\n    LOCATION    = '/gold_netflixcast/',   \n    DATA_SOURCE = gold_source,\n    FILE_FORMAT = ParquetFormat\n)\nAS SELECT * FROM OPENROWSET(\n    BULK        '/netflix_cast/',         \n    DATA_SOURCE = 'silver_source',\n    FORMAT      = 'DELTA'\n) AS df\nGO\n\n-- 2. titles\nCREATE EXTERNAL TABLE netflix_schema.gold_netflixtitles\nWITH (\n    LOCATION    = '/gold_netflixtitles/',\n    DATA_SOURCE = gold_source,\n    FILE_FORMAT = ParquetFormat\n)\nAS SELECT * FROM OPENROWSET(\n    BULK        '/netflix_titles/',   \n    DATA_SOURCE = 'silver_source',\n    FORMAT      = 'DELTA'\n) AS df\nGO\n\n-- 3. directors\nCREATE EXTERNAL TABLE netflix_schema.gold_netflixdirectors\nWITH (\n    LOCATION    = '/gold_netflixdirectors/', \n    DATA_SOURCE = gold_source,\n    FILE_FORMAT = ParquetFormat\n)\nAS SELECT * FROM OPENROWSET(\n    BULK        '/netflix_directors/',     \n    DATA_SOURCE = 'silver_source',\n    FORMAT      = 'DELTA'\n) AS df\nGO\n\n-- 4. countries\nCREATE EXTERNAL TABLE netflix_schema.gold_netflixcountries\nWITH (\n    LOCATION    = '/gold_netflixcountries/', \n    DATA_SOURCE = gold_source,\n    FILE_FORMAT = ParquetFormat\n)\nAS SELECT * FROM OPENROWSET(\n    BULK        '/netflix_countries/',      \n    DATA_SOURCE = 'silver_source',\n    FORMAT      = 'DELTA'\n) AS df\n-- GO\n\n-- 5. category\nCREATE EXTERNAL TABLE netflix_schema.gold_netflixcategory\nWITH (\n    LOCATION    = '/gold_netflixcategory/', \n    DATA_SOURCE = gold_source,\n    FILE_FORMAT = ParquetFormat\n)\nAS SELECT * FROM OPENROWSET(\n    BULK        '/netflix_category/',       \n    DATA_SOURCE = 'silver_source',\n    FORMAT      = 'DELTA'\n) AS df\nGO\n\nDROP VIEW IF EXISTS netflix_schema.vw_netflix_complete\nGO\n\nCREATE VIEW netflix_schema.vw_netflix_complete\nAS\nSELECT\n    t.show_id,\n    t.title,\n    t.type,\n    t.release_year,\n    t.rating,\n    t.duration_minutes,\n    d.director,\n    c.cast,\n    ct.country,\n    cat.listed_in\nFROM      netflix_schema.gold_netflixtitles    t\nLEFT JOIN netflix_schema.gold_netflixdirectors d   \n    ON CAST(t.show_id AS VARCHAR) = CAST(d.show_id AS VARCHAR)  \nLEFT JOIN netflix_schema.gold_netflixcast      c   \n    ON CAST(t.show_id AS VARCHAR) = CAST(c.show_id AS VARCHAR)  \nLEFT JOIN netflix_schema.gold_netflixcountries ct  \n    ON CAST(t.show_id AS VARCHAR) = CAST(ct.show_id AS VARCHAR) \nLEFT JOIN netflix_schema.gold_netflixcategory  cat \n    ON CAST(t.show_id AS VARCHAR) = CAST(cat.show_id AS VARCHAR)\nGO\n\nSELECT*FROM netflix_schema.vw_netflix_complete\n\nCREATE EXTERNAL TABLE netflix_schema.netflix_final\nWITH (\n    LOCATION    = '/gold_netflix_final/', \n    DATA_SOURCE = gold_source,\n    FILE_FORMAT = ParquetFormat\n)\nAS\nSELECT * FROM netflix_schema.vw_netflix_complete;\n\nSELECT*FROM netflix_schema.vw_netflix_complete;\n\n",
+					"metadata": {
+						"language": "sql"
+					},
+					"currentConnection": {
+						"databaseName": "netflix",
+						"poolName": "Built-in"
+					},
+					"resultLimit": 5000
+				},
+				"type": "SqlQuery"
+			},
+			"dependsOn": []
+		}
+	]
+}
